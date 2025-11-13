@@ -1,135 +1,92 @@
-// main2.c
-// 每次執行：
-// 1) 檢查 counter.bin（如無則建立並寫 0）
-// 2) 讀取 counter (已賣出單數)
-// 3) counter++，以此數字生成 lotto[NNNNN].txt（檔名 5 位數填零）
-// 4) 產生一組彩卷（6 個不重複號碼，1..49），排序，輸出到檔案與同目錄下的 "lotto.txt"（可手動整合到 hw3）
-// 5) 將新的 counter 寫回 counter.bin
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <string.h>
 
-#define COUNTER_FILE "counter.bin"
-#define OUTPUT_PREFIX "lotto"
-#define TICKET_NUM_PER_FILE 1    // 每個 lotto[xxxxx].txt 放多少組（可改）
-#define NUM_PER_TICKET 6
-#define MAX_BALL 49
+int main() {
+    FILE *fp_txt, *fp_bin;
+    int counter = 0;
+    int i, j, k, repeat;
+    int lotto[5][7];
+    time_t now;
+    struct tm *t;
 
-// initialize counter.bin if not exists
-void init_counter_if_needed(void) {
-    FILE *f = fopen(COUNTER_FILE, "rb");
-    if (!f) {
-        // create with zero
-        f = fopen(COUNTER_FILE, "wb");
-        if (!f) { perror("建立 counter.bin 失敗"); exit(1); }
-        int zero = 0;
-        fwrite(&zero, sizeof(int), 1, f);
-        fclose(f);
-    } else {
-        fclose(f);
+    srand((unsigned)time(NULL));  
+
+ 
+    fp_bin = fopen("counter.bin", "r");
+    if (fp_bin == NULL) {
+        // 若沒有則建立，初始值為0
+        fp_bin = fopen("counter.bin", "w");
+        fwrite(&counter, sizeof(int), 1, fp_bin);
+        fclose(fp_bin);
+        fp_bin = fopen("counter.bin", "r");
     }
-}
 
-// read counter
-int read_counter(void) {
-    FILE *f = fopen(COUNTER_FILE, "rb");
-    if (!f) { perror("讀 counter.bin 失敗"); exit(1); }
-    int counter;
-    if (fread(&counter, sizeof(int), 1, f) != 1) {
-        fclose(f); perror("讀取 counter 失敗"); exit(1);
-    }
-    fclose(f);
-    return counter;
-}
+    // 讀取目前的 counter
+    fread(&counter, sizeof(int), 1, fp_bin);
+    fclose(fp_bin);
 
-// write counter
-void write_counter(int c) {
-    FILE *f = fopen(COUNTER_FILE, "wb");
-    if (!f) { perror("寫 counter.bin 失敗"); exit(1); }
-    if (fwrite(&c, sizeof(int), 1, f) != 1) { perror("寫入 counter 失敗"); fclose(f); exit(1); }
-    fclose(f);
-}
+    // 執行一次就 +1
+    counter++;
 
-// check if value exists in array
-int contains(int arr[], int n, int val) {
-    for (int i=0;i<n;i++) if (arr[i]==val) return 1;
-    return 0;
-}
+    // 更新 counter.bin
+    fp_bin = fopen("counter.bin", "w");
+    fwrite(&counter, sizeof(int), 1, fp_bin);
+    fclose(fp_bin);
 
-// generate one ticket (NUM_PER_TICKET numbers, unique), sorted ascending
-void generate_ticket(int ticket[]) {
-    int count = 0;
-    while (count < NUM_PER_TICKET) {
-        int v = (rand() % MAX_BALL) + 1; // 1..MAX_BALL
-        if (!contains(ticket, count, v)) {
-            ticket[count++] = v;
+    // 組出檔案名稱，例如 lotto[00001].txt
+    char filename[64];
+    sprintf(filename, "lotto[%05d].txt", counter);
+
+    fp_txt = fopen(filename, "w");
+
+    // 取得時間
+    time(&now);
+    t = localtime(&now);
+
+    fprintf(fp_txt, "========= lotto649 =========\n");
+    fprintf(fp_txt, "======= %04d/%02d/%02d %02d:%02d:%02d =======\n",
+            t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+            t->tm_hour, t->tm_min, t->tm_sec);
+
+    // 產生樂透號碼
+    for (i = 0; i < 5; i++) {
+        fprintf(fp_txt, "[%d]: ", i + 1);
+        for (j = 0; j < 7; j++) lotto[i][j] = 0; // 初始化
+
+        for (j = 0; j < 7; j++) {
+            do {
+                lotto[i][j] = rand() % 69 + 1;
+                repeat = 0;
+                for (k = 0; k < j; k++) {
+                    if (lotto[i][j] == lotto[i][k]) repeat = 1;
+                }
+            } while (repeat);
         }
-    }
-    // simple sort (NUM_PER_TICKET small)
-    for (int i=0;i<NUM_PER_TICKET-1;i++) {
-        for (int j=i+1;j<NUM_PER_TICKET;j++) {
-            if (ticket[i] > ticket[j]) {
-                int tmp = ticket[i]; ticket[i]=ticket[j]; ticket[j]=tmp;
+
+        // 排序
+        for (j = 0; j < 6; j++) {
+            for (k = j + 1; k < 7; k++) {
+                if (lotto[i][j] > lotto[i][k]) {
+                    int temp = lotto[i][j];
+                    lotto[i][j] = lotto[i][k];
+                    lotto[i][k] = temp;
+                }
             }
         }
+
+        // 印出
+        for (j = 0; j < 7; j++) fprintf(fp_txt, "%02d ", lotto[i][j]);
+        fprintf(fp_txt, "\n");
     }
+
+    fprintf(fp_txt, "========= csie@CGU =========\n");
+    fclose(fp_txt);
+
+    printf("已產生 %s\n", filename);
+    return 0;
 }
-
-// format filename lotto[00001].txt
-void make_filename(int counter, char *out, size_t outlen) {
-    snprintf(out, outlen, "%s[%05d].txt", OUTPUT_PREFIX, counter);
-}
-
-int main(void) {
-    srand((unsigned)time(NULL)); // 如果需要固定亂數改為 srand(1);
-
-    init_counter_if_needed();
-    int counter = read_counter(); // 讀取已賣出的數量
-    counter++; // 本次賣出 -> 新的單號
-
-    char fname[128];
-    make_filename(counter, fname, sizeof(fname));
-
-    FILE *f = fopen(fname, "w");
-    if (!f) { perror("開檔失敗"); return 1; }
-
-    // 寫入檔頭（與 hw3 類似格式）
-    fprintf(f, "========= lotto649 =========\n");
-    for (int t = 1; t <= TICKET_NUM_PER_FILE; ++t) {
-        int ticket[NUM_PER_TICKET] = {0};
-        generate_ticket(ticket);
-        fprintf(f, "[%d]:", t);
-        for (int i=0;i<NUM_PER_TICKET;i++) {
-            fprintf(f, " %02d", ticket[i]);
-        }
-        fprintf(f, "\n");
-    }
-    fclose(f);
-
-    // (選擇) 同步更新 / 產生一份總合的 lotto.txt（若 hw3 需要）
-    FILE *master = fopen("lotto.txt", "w");
-    if (master) {
-        fprintf(master, "========= lotto649 =========\n");
-        for (int t = 1; t <= TICKET_NUM_PER_FILE; ++t) {
-            // 重新產生同樣格式輸出；要注意：若需與個別檔案完全一致，請改成從檔案讀回
-            int ticket[NUM_PER_TICKET] = {0};
-            generate_ticket(ticket);
-            fprintf(master, "[%d]:", t);
-            for (int i=0;i<NUM_PER_TICKET;i++) fprintf(master, " %02d", ticket[i]);
-            fprintf(master, "\n");
-        }
-        fclose(master);
-    } else {
-        // not critical
-    }
-
-    // write back counter
-    write_counter(counter);
-
-    printf("已產生 %s （本次單號 %05d）。\n", fname, counter);
-    printf("counter.bin 已更新為 %d。\n", counter);
 
     return 0;
 }
